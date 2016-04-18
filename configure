@@ -187,7 +187,7 @@ Darwin )
 	echo '#define DARWIN' >> config.h
 ;;
 Linux | GNU/kFreeBSD)
-	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread"
+	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread -lssl -lcrypto"
 ;;
 SunOS )
 	echo '#define NOGETOPTLONG' >> config.h
