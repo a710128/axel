@@ -58,8 +58,8 @@ int conf_loadfile( conf_t *conf, char *file )
 		line ++;
 		
 		*s = 0;
-		fscanf( fp, "%100[^\n#]s", s );
-		fscanf( fp, "%*[^\n]s" );
+		if(fscanf( fp, "%100[^\n#]s", s ) < 0);
+		if(fscanf( fp, "%*[^\n]s" ) < 0);
 		fgetc( fp );			/* Skip newline		*/
 		if( strchr( s, '=' ) == NULL )
 			continue;		/* Probably empty?	*/
@@ -104,7 +104,7 @@ int conf_loadfile( conf_t *conf, char *file )
 		
 		if( !st )
 		{
-			fprintf( stderr, _("Error in %s line %i.\n"), file, line );
+			if(fprintf( stderr, _("Error in %s line %i.\n"), file, line ) < 0);
 			return( 0 );
 		}
 		get_config_number( add_header_count );

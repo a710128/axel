@@ -158,14 +158,14 @@ fi
 case "$arch" in
 FreeBSD )
 	echo '#define NOGETOPTLONG' >> config.h
-	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread"
+	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread -lssl -lcrypto"
 	if [ "$i18n" = "1" ]; then
 		AXEL_LFLAGS="${AXEL_LFLAGS} -lintl"
 	fi
 ;;
 OpenBSD )
 	echo '#define NOGETOPTLONG' >> config.h
-	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread"
+	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread -lssl -lcrypto"
 	if [ "$i18n" = "1" ]; then
 		AXEL_LFLAGS="${AXEL_LFLAGS} -lintl"
 	fi
@@ -173,14 +173,14 @@ OpenBSD )
 NetBSD )
 	echo 'WARNING: NetBSD not tested! Using OpenBSD settings.'
 	echo '#define NOGETOPTLONG' >> config.h
-	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread"
+	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread -lssl -lcrypto"
 	if [ "$i18n" = "1" ]; then
 		AXEL_LFLAGS="${AXEL_LFLAGS} -lintl"
 	fi
 ;;
 Darwin )
 	echo '#define NOGETOPTLONG' >> config.h
-	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread"
+	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread -lssl -lcrypto"
 	if [ "$i18n" = "1" ]; then
 		AXEL_LFLAGS="${AXEL_LFLAGS} -lintl"
 	fi
@@ -192,7 +192,7 @@ Linux | GNU/kFreeBSD)
 SunOS )
 	echo '#define NOGETOPTLONG' >> config.h
 	echo '#define BSD_COMP' >> config.h
-	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread -lsocket -lnsl"
+	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread -lsocket -lnsl -lssl -lcrypto"
 	if [ "$i18n" = "1" ]; then
 		AXEL_LFLAGS="${AXEL_LFLAGS} -lintl"
 	fi
@@ -205,17 +205,17 @@ HP-UX )
 		fi
 		AXEL_LFLAGS="${AXEL_LFLAGS} -lintl"
 	fi
-	AXEL_LFLAGS="${AXEL_LFLAGS} -lpthread"
+	AXEL_LFLAGS="${AXEL_LFLAGS} -lpthread -lssl -lcrypto"
 ;;
 CYGWIN_* )
-	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread"
+	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread -lssl -lcrypto"
 	if [ "$i18n" = "1" ]; then
 		AXEL_LFLAGS="${AXEL_LFLAGS} -lintl"
 	fi
 	echo 'OUTFILE=axel.exe' >> Makefile.settings
 ;;
 * )
-	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread"
+	AXEL_LFLAGS="${AXEL_LFLAGS} -pthread -lssl -lcrypto"
 	echo '#define NOGETOPTLONG' >> config.h
 	if [ "$i18n" = "1" ]; then
 		AXEL_LFLAGS="${AXEL_LFLAGS} -lintl";

@@ -23,7 +23,7 @@
   Suite 330, Boston, MA  02111-1307  USA
 */
 
-#define MAX_QUERY	2048		/* Should not grow larger..	*/
+#define MAX_QUERY	204800		/* 200K	*/
 
 typedef struct
 {

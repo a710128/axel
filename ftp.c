@@ -158,7 +158,7 @@ long long int ftp_size( ftp_t *conn, char *file, int maxredir )
 	}
 	
 #ifdef DEBUG
-	fprintf( stderr, reply );
+    fprintf(stderr, "%s", reply);
 #endif
 	
 	/* Count the number of probably legal matches: Files&Links only	*/

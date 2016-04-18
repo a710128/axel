@@ -71,7 +71,7 @@ int main( int argc, char *argv[] )
 	axel_t *axel;
 	int i, j, cur_head = 0;
 	char *s;
-	
+
 #ifdef I18N
 	setlocale( LC_ALL, "" );
 	bindtextdomain( PACKAGE, LOCALE );
@@ -86,6 +86,7 @@ int main( int argc, char *argv[] )
 	opterr = 0;
 	
 	j = -1;
+
 	while( 1 )
 	{
 		int option;
@@ -186,7 +187,6 @@ int main( int argc, char *argv[] )
 			return( 1 );
 		}
 	}
-	
 	printf( _("Initializing download: %s\n"), s );
 	if( do_search )
 	{
@@ -313,7 +313,6 @@ int main( int argc, char *argv[] )
 			i ++;
 		}
 	}
-	
 	if( !axel_open( axel ) )
 	{
 		print_messages( axel );
@@ -340,7 +339,6 @@ int main( int argc, char *argv[] )
 	/* Install save_state signal handler for resuming support	*/
 	signal( SIGINT, stop );
 	signal( SIGTERM, stop );
-	
 	while( !axel->ready && run )
 	{
 		long long int prev, done;

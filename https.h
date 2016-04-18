@@ -4,7 +4,7 @@
   * Copyright 2001 Wilmer van der Gaast                                *
   \********************************************************************/
 
-/* Connection stuff							*/
+/* HTTP control include file						*/
 
 /*
   This program is free software; you can redistribute it and/or modify
@@ -23,45 +23,31 @@
   Suite 330, Boston, MA  02111-1307  USA
 */
 
-#define PROTO_FTP	1
-#define PROTO_HTTP	2
-#define PROTO_HTTPS 3
-#define PROTO_DEFAULT	PROTO_FTP
+#include <openssl/ssl.h>
 
 typedef struct
 {
-	conf_t *conf;
-	
-	int proto;
-	int port;
-	int proxy;
 	char host[MAX_STRING];
-	char dir[MAX_STRING];
-	char file[MAX_STRING];
-	char user[MAX_STRING];
-	char pass[MAX_STRING];
-	
-	ftp_t ftp[1];
-	http_t http[1];
-    https_t https[1];
-	long long int size;		/* File size, not 'connection size'..	*/
-	long long int currentbyte;
+	char auth[MAX_STRING];
+	char request[MAX_QUERY];
+	char headers[MAX_QUERY];
+	int proto;			/* FTP through HTTP proxies	*/
+	int proxy;
+	long long int firstbyte;
 	long long int lastbyte;
+	int status;
 	int fd;
-	int enabled;
-	int supported;
-	int last_transfer;
-	char *message;
+    SSL *ssl;
+    SSL_CTX *ctx;
 	char *local_if;
+} https_t;
 
-	int state;
-	pthread_t setup_thread[1];
-} conn_t;
-
-int conn_set( conn_t *conn, char *set_url );
-char *conn_url( conn_t *conn );
-void conn_disconnect( conn_t *conn );
-int conn_init( conn_t *conn );
-int conn_setup( conn_t *conn );
-int conn_exec( conn_t *conn );
-int conn_info( conn_t *conn );
+int https_connect( https_t *conn, int proto, char *proxy, char *host, int port, char *user, char *pass );
+void https_disconnect( https_t *conn );
+void https_get( https_t *conn, char *lurl );
+void https_addheader( https_t *conn, char *format, ... );
+int https_exec( https_t *conn );
+char *https_header( https_t *conn, char *header );
+long long int https_size( https_t *conn );
+void https_encode( char *s );
+void https_decode( char *s );

@@ -92,7 +92,6 @@ axel_t *axel_new( conf_t *conf, int count, void *url )
 		axel->ready = -1;
 		return( axel );
 	}
-
 	axel->conn[0].local_if = axel->conf->interfaces->text;
 	axel->conf->interfaces = axel->conf->interfaces->next;
 	
@@ -109,7 +108,6 @@ axel_t *axel_new( conf_t *conf, int count, void *url )
 		axel->ready = -1;
 		return( axel );
 	}
-	
 	/* This does more than just checking the file size, it all depends
 	   on the protocol used.					*/
 	if( !conn_info( &axel->conn[0] ) )
@@ -129,7 +127,6 @@ axel_t *axel_new( conf_t *conf, int count, void *url )
 	/* Wildcards in URL --> Get complete filename			*/
 	if( strchr( axel->filename, '*' ) || strchr( axel->filename, '?' ) )
 		strncpy( axel->filename, axel->conn[0].file, MAX_STRING );
-	
 	return( axel );
 }
 
@@ -157,16 +154,28 @@ int axel_open( axel_t *axel )
 	}
 	else if( ( fd = open( buffer, O_RDONLY ) ) != -1 )
 	{
-		read( fd, &axel->conf->num_connections, sizeof( axel->conf->num_connections ) );
+		if(read( fd, &axel->conf->num_connections, sizeof( axel->conf->num_connections ) ) < 0) 
+        {
+            axel_message( axel, _("Error opening local file") );
+            return( 0 );
+        }
 		
 		axel->conn = realloc( axel->conn, sizeof( conn_t ) * axel->conf->num_connections );
 		memset( axel->conn + 1, 0, sizeof( conn_t ) * ( axel->conf->num_connections - 1 ) );
 
 		axel_divide( axel );
 		
-		read( fd, &axel->bytes_done, sizeof( axel->bytes_done ) );
+		if(read( fd, &axel->bytes_done, sizeof( axel->bytes_done ) ) < 0) 
+        {
+            axel_message( axel, _("Error opening local file") );
+            return( 0 );
+        }
 		for( i = 0; i < axel->conf->num_connections; i ++ )
-			read( fd, &axel->conn[i].currentbyte, sizeof( axel->conn[i].currentbyte ) );
+			if(read( fd, &axel->conn[i].currentbyte, sizeof( axel->conn[i].currentbyte ) ) < 0) 
+            {
+                axel_message( axel, _("Error opening local file") );
+                return( 0 );
+            }
 
 		axel_message( axel, _("State file found: %lld bytes downloaded, %lld to go."),
 			axel->bytes_done, axel->size - axel->bytes_done );
@@ -205,7 +214,11 @@ int axel_open( axel_t *axel )
 			j = axel->size;
 			while( j > 0 )
 			{
-				write( axel->outfd, buffer, min( j, axel->conf->buffer_size ) );
+				if(write( axel->outfd, buffer, min( j, axel->conf->buffer_size ) ) < 0) 
+                {
+                    axel_message( axel, _("Unknown Error\n") );
+			        return( 0 );
+                }
 				j -= axel->conf->buffer_size;
 			}
 		}
@@ -313,7 +326,8 @@ void axel_do( axel_t *axel )
 	if( FD_ISSET( axel->conn[i].fd, fds ) )
 	{
 		axel->conn[i].last_transfer = gettime();
-		size = read( axel->conn[i].fd, buffer, axel->conf->buffer_size );
+		if(axel->conn[i].proto != PROTO_HTTPS) size = read( axel->conn[i].fd, buffer, axel->conf->buffer_size );
+        else size = SSL_read(axel->conn[i].https->ssl, buffer, axel->conf->buffer_size);
 		if( size == -1 )
 		{
 			if( axel->conf->verbose )
@@ -486,9 +500,9 @@ void axel_close( axel_t *axel )
 	
 	/* Close all connections and local file				*/
 	close( axel->outfd );
+
 	for( i = 0; i < axel->conf->num_connections; i ++ )
 		conn_disconnect( &axel->conn[i] );
-
 	free_axel_t( axel );
 	free( buffer );
 }
@@ -518,11 +532,23 @@ void save_state( axel_t *axel )
 	{
 		return;		/* Not 100% fatal..			*/
 	}
-	write( fd, &axel->conf->num_connections, sizeof( axel->conf->num_connections ) );
-	write( fd, &axel->bytes_done, sizeof( axel->bytes_done ) );
+	if(write( fd, &axel->conf->num_connections, sizeof( axel->conf->num_connections ) ) < 0)
+    {
+        axel_message( axel, _("Unknown Error\n") );
+        return;
+    }
+	if(write( fd, &axel->bytes_done, sizeof( axel->bytes_done ) ) < 0)
+    {
+        axel_message( axel, _("Unknown Error\n") );
+        return;
+    }
 	for( i = 0; i < axel->conf->num_connections; i ++ )
 	{
-		write( fd, &axel->conn[i].currentbyte, sizeof( axel->conn[i].currentbyte ) );
+		if(write( fd, &axel->conn[i].currentbyte, sizeof( axel->conn[i].currentbyte ) ) < 0)
+        {
+            axel_message( axel, _("Unknown Error\n") );
+            return;
+        }
 	}
 	close( fd );
 }

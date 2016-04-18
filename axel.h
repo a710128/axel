@@ -83,6 +83,7 @@ typedef message_t if_t;
 #include "tcp.h"
 #include "ftp.h"
 #include "http.h"
+#include "https.h"
 #include "conn.h"
 #include "search.h"
 

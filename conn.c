@@ -43,8 +43,12 @@ int conn_set( conn_t *conn, char *set_url )
 	{
 		if( set_url[0] == 'f' )
 			conn->proto = PROTO_FTP;
-		else if( set_url[0] == 'h' )
-			conn->proto = PROTO_HTTP;
+		else if( set_url[0] == 'h' ) {
+			if(set_url[4] == 's')
+                conn->proto = PROTO_HTTPS;
+            else
+                conn->proto = PROTO_HTTP;
+        }
 		else
 		{
 			return( 0 );
@@ -61,7 +65,7 @@ int conn_set( conn_t *conn, char *set_url )
 	{
 		*i = 0;
 		snprintf( conn->dir, MAX_STRING, "/%s", i + 1 );
-		if( conn->proto == PROTO_HTTP )
+		if( conn->proto == PROTO_HTTP || conn->proto == PROTO_HTTPS)
 			http_encode( conn->dir );
 	}
 	strncpy( conn->host, url, MAX_STRING );
@@ -135,8 +139,12 @@ int conn_set( conn_t *conn, char *set_url )
 			conn->port = ntohs( serv->s_port );
 		else
 #endif
+        //printf("%d\n", conn->proto);
+        conn->proto;
 		if( conn->proto == PROTO_HTTP )
 			conn->port = 80;
+        else if(conn->proto == PROTO_HTTPS)
+            conn->port = 443;
 		else
 			conn->port = 21;
 	}
@@ -149,8 +157,10 @@ char *conn_url( conn_t *conn )
 {
 	if( conn->proto == PROTO_FTP )
 		strcpy( string, "ftp://" );
-	else
+	else if(conn->proto == PROTO_HTTP)
 		strcpy( string, "http://" );
+    else
+        strcpy( string, "https://");
 	
 	if( *conn->user != 0 && strcmp( conn->user, "anonymous" ) != 0 )
 		sprintf( string + strlen( string ), "%s:%s@",
@@ -167,8 +177,10 @@ void conn_disconnect( conn_t *conn )
 {
 	if( conn->proto == PROTO_FTP && !conn->proxy )
 		ftp_disconnect( conn->ftp );
-	else
+	else if(conn->proto == PROTO_HTTP)
 		http_disconnect( conn->http );
+    else
+        https_disconnect( conn-> https );
 	conn->fd = -1;
 }
 
@@ -215,22 +227,35 @@ int conn_init( conn_t *conn )
 	}
 	else
 	{
-		conn->http->local_if = conn->local_if;
-		if( !http_connect( conn->http, conn->proto, proxy, conn->host, conn->port, conn->user, conn->pass ) )
-		{
-			conn->message = conn->http->headers;
-			conn_disconnect( conn );
-			return( 0 );
-		}
-		conn->message = conn->http->headers;
-		conn->fd = conn->http->fd;
+        if(conn->proto == PROTO_HTTP) {
+            conn->http->local_if = conn->local_if;
+            if( !http_connect( conn->http, conn->proto, proxy, conn->host, conn->port, conn->user, conn->pass ) )
+            {
+                conn->message = conn->http->headers;
+                conn_disconnect( conn );
+                return( 0 );
+            }
+            conn->message = conn->http->headers;
+            conn->fd = conn->http->fd;
+        }
+        else {
+            conn->https->local_if = conn->local_if;
+            if( !https_connect( conn->https, conn->proto, proxy, conn->host, conn->port, conn->user, conn->pass ) )
+            {
+                conn->message = conn->https->headers;
+                conn_disconnect( conn );
+                return( 0 );
+            }
+            conn->message = conn->https->headers;
+            conn->fd = conn->https->fd;
+        }
 	}
 	return( 1 );
 }
 
 int conn_setup( conn_t *conn )
 {
-	if( conn->ftp->fd <= 0 && conn->http->fd <= 0 )
+	if( conn->ftp->fd <= 0 && conn->http->fd <= 0 && conn->https->fd <= 0)
 		if( !conn_init( conn ) )
 			return( 0 );
 	
@@ -248,7 +273,7 @@ int conn_setup( conn_t *conn )
 				return( 0 );
 		}
 	}
-	else
+	else if(conn->proto == PROTO_HTTP)
 	{
 		char s[MAX_STRING];
 		int i;
@@ -260,6 +285,18 @@ int conn_setup( conn_t *conn )
 		http_addheader( conn->http, "User-Agent: %s", conn->conf->user_agent );
 		for( i = 0; i < conn->conf->add_header_count; i++)
 			http_addheader( conn->http, "%s", conn->conf->add_header[i] );
+	}
+    else {
+		char s[MAX_STRING];
+		int i;
+
+		snprintf( s, MAX_STRING, "%s%s", conn->dir, conn->file );
+		conn->https->firstbyte = conn->currentbyte;
+		conn->https->lastbyte = conn->lastbyte;
+		https_get( conn->https, s );
+		https_addheader( conn->https, "User-Agent: %s", conn->conf->user_agent );
+		for( i = 0; i < conn->conf->add_header_count; i++)
+			https_addheader( conn->https, "%s", conn->conf->add_header[i] );
 	}
 	return( 1 );
 }
@@ -274,9 +311,16 @@ int conn_exec( conn_t *conn )
 	}
 	else
 	{
-		if( !http_exec( conn->http ) )
-			return( 0 );
-		return( conn->http->status / 100 == 2 );
+        if(conn->proto == PROTO_HTTP) {
+		    if( !http_exec( conn->http ) )
+			    return( 0 );
+		    return( conn->http->status / 100 == 2 );
+        }
+        else { //https
+            if( !https_exec( conn->https ) )
+			    return( 0 );
+		    return( conn->https->status / 100 == 2 );
+        }
 	}
 }
 
@@ -309,68 +353,126 @@ int conn_info( conn_t *conn )
 		else if( conn->size == -2 )
 			conn->size = INT_MAX;
 	}
-	else
+	else 
 	{
 		char s[MAX_STRING], *t;
 		long long int i = 0;
 		
 		do
 		{
-			conn->currentbyte = 1;
-			if( !conn_setup( conn ) )
-				return( 0 );
-			conn_exec( conn );
-			conn_disconnect( conn );
-			/* Code 3xx == redirect				*/
-			if( conn->http->status / 100 != 3 )
-				break;
-			if( ( t = http_header( conn->http, "location:" ) ) == NULL )
-				return( 0 );
-			sscanf( t, "%255s", s );
-			if( strstr( s, "://" ) == NULL)
-			{
-				sprintf( conn->http->headers, "%s%s",
-					conn_url( conn ), s );
-				strncpy( s, conn->http->headers, MAX_STRING );
-			}
-			else if( s[0] == '/' )
-			{
-				sprintf( conn->http->headers, "http://%s:%i%s",
-					conn->host, conn->port, s );
-				strncpy( s, conn->http->headers, MAX_STRING );
-			}
-			conn_set( conn, s );
-			i ++;
-		}
-		while( conn->http->status / 100 == 3 && i < MAX_REDIR );
-		
-		if( i == MAX_REDIR )
-		{
-			sprintf( conn->message, _("Too many redirects.\n") );
-			return( 0 );
-		}
-		
-		conn->size = http_size( conn->http );
-		if( conn->http->status == 206 && conn->size >= 0 )
-		{
-			conn->supported = 1;
-			conn->size ++;
-		}
-		else if( conn->http->status == 200 || conn->http->status == 206 )
-		{
-			conn->supported = 0;
-			conn->size = INT_MAX;
-		}
-		else
-		{
-			t = strchr( conn->message, '\n' );
-			if( t == NULL )
-				sprintf( conn->message, _("Unknown HTTP error.\n") );
-			else
-				*t = 0;
-			return( 0 );
-		}
+            if(conn->proto == PROTO_HTTP) { // for http
+                conn->currentbyte = 1;
+                if( !conn_setup( conn ) )
+                    return( 0 );
+                conn_exec( conn );
+                conn_disconnect( conn );
+                /* Code 3xx == redirect				*/
+                if( conn->http->status / 100 != 3 )
+                    break;
+                if( ( t = http_header( conn->http, "location:" ) ) == NULL )
+                    return( 0 );
+                sscanf( t, "%255s", s );
+                if( strstr( s, "://" ) == NULL)
+                {
+                    sprintf( conn->http->headers, "%s%s",
+                        conn_url( conn ), s );
+                    strncpy( s, conn->http->headers, MAX_STRING );
+                }
+                else if( s[0] == '/' )
+                {
+                    sprintf( conn->http->headers, "http://%s:%i%s",
+                        conn->host, conn->port, s );
+                    strncpy( s, conn->http->headers, MAX_STRING );
+                }
+                conn_set( conn, s );
+                i ++;
+            }
+            else { // for https
+                    conn->currentbyte = 1;
+                    if( !conn_setup( conn ) )
+                        return( 0 );
+                    conn_exec( conn );
+                    conn_disconnect( conn );
+                    /* Code 3xx == redirect				*/
+                    if( conn->https->status / 100 != 3 )
+                        break;
+                    if( ( t = https_header( conn->https, "location:" ) ) == NULL )
+                        return( 0 );
+                    sscanf( t, "%255s", s );
+                    if( strstr( s, "://" ) == NULL)
+                    {
+                        sprintf( conn->https->headers, "%s%s",
+                            conn_url( conn ), s );
+                        strncpy( s, conn->https->headers, MAX_STRING );
+                    }
+                    else if( s[0] == '/' )
+                    {
+                        sprintf( conn->https->headers, "https://%s:%i%s",
+                            conn->host, conn->port, s );
+                        strncpy( s, conn->https->headers, MAX_STRING );
+                    }
+                    conn_set( conn, s );
+                    i ++;
+            }
+		}while(i < 5);
+        if(conn->proto == PROTO_HTTP) { // for http
+            while( conn->http->status / 100 == 3 && i < MAX_REDIR );
+            
+            if( i == MAX_REDIR )
+            {
+                sprintf( conn->message, _("Too many redirects.\n") );
+                return( 0 );
+            }
+            
+            conn->size = http_size( conn->http );
+            if( conn->http->status == 206 && conn->size >= 0 )
+            {
+                conn->supported = 1;
+                conn->size ++;
+            }
+            else if( conn->http->status == 200 || conn->http->status == 206 )
+            {
+                conn->supported = 0;
+                conn->size = INT_MAX;
+            }
+            else
+            {
+                t = strchr( conn->message, '\n' );
+                if( t == NULL )
+                    sprintf( conn->message, _("Unknown HTTP error.\n") );
+                else
+                    *t = 0;
+                return( 0 );
+            }
+        }
+        else { // for https
+            while( conn->https->status / 100 == 3 && i < MAX_REDIR );
+            if( i == MAX_REDIR )
+            {
+                sprintf( conn->message, _("Too many redirects.\n") );
+                return( 0 );
+            }
+            conn->size = https_size( conn->https );
+            if( conn->https->status == 206 && conn->size >= 0 )
+            {
+                conn->supported = 1;
+                conn->size ++;
+            }
+            else if( conn->https->status == 200 || conn->https->status == 206 )
+            {
+                conn->supported = 0;
+                conn->size = INT_MAX;
+            }
+            else
+            {
+                t = strchr( conn->message, '\n' );
+                if( t == NULL )
+                    sprintf( conn->message, _("Unknown HTTP error.\n") );
+                else
+                    *t = 0;
+                return( 0 );
+            }
+        }
 	}
-	
 	return( 1 );
 }

@@ -24,9 +24,9 @@
 */
 
 #include "axel.h"
+#include <openssl/ssl.h>
 
-
-int http_connect( http_t *conn, int proto, char *proxy, char *host, int port, char *user, char *pass )
+int https_connect( https_t *conn, int proto, char *proxy, char *host, int port, char *user, char *pass )
 {
 	char base64_encode[64] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 		"abcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -80,48 +80,68 @@ int http_connect( http_t *conn, int proto, char *proxy, char *host, int port, ch
 			if( auth[i*3+1] == 0 ) conn->auth[i*4+2] = '=';
 		}
 	}
+    
+    SSL_library_init();  
+    OpenSSL_add_all_algorithms();  
+    SSL_load_error_strings();  
+    conn->ctx = SSL_CTX_new(SSLv23_client_method());  
+    if (conn->ctx == NULL)  
+    {  
+        sprintf( conn->headers, _("Unable to connect to server %s:%i\n"), host, port );
+        return( 0 );
+    } 
+    conn->ssl = SSL_new(conn->ctx);  
+    SSL_set_fd(conn->ssl, conn->fd);  
+    if (SSL_connect(conn->ssl) == -1) {
+        conn->ssl = NULL;
+        sprintf( conn->headers, _("Unable to connect to server %s:%i\n"), host, port );
+        return( 0 );
+    }
 	return( 1 );
 }
 
-void http_disconnect( http_t *conn )
+void https_disconnect( https_t *conn )
 {
+    if(conn->ssl) {
+        SSL_shutdown(conn->ssl);
+        SSL_free(conn->ssl);
+    }
 	if( conn->fd > 0 )
 		close( conn->fd );
+    if(conn->ctx) {
+        SSL_CTX_free(conn->ctx);
+    }
 	conn->fd = -1;
+    conn->ssl = NULL;
+    conn->ctx = NULL;
 }
 
-void http_get( http_t *conn, char *lurl )
-{
+void https_get( https_t *conn, char *lurl )
+{   
 	*conn->request = 0;
 	if( conn->proxy )
 	{
-		http_addheader( conn, "GET %s://%s%s HTTP/1.0",
+		https_addheader( conn, "GET %s://%s%s HTTP/1.0",
 			conn->proto == PROTO_HTTP ? "http" : (conn->proto == PROTO_HTTPS ? "https" : "ftp"), conn->host, lurl );
 	}
 	else
 	{
-		http_addheader( conn, "GET %s HTTP/1.0", lurl );
-        http_addheader( conn, "Accept: */*");
-        http_addheader( conn, "Accept-Encoding: identity");
+		https_addheader( conn, "GET %s HTTP/1.0", lurl );
         
-		http_addheader( conn, "Host: %s", conn->host );
-        http_addheader( conn, "Connection: Keep-Alive");
-        
-
-        
+		https_addheader( conn, "Host: %s", conn->host );
 	}
 	if( *conn->auth )
-		http_addheader( conn, "Authorization: Basic %s", conn->auth );
+		https_addheader( conn, "Authorization: Basic %s", conn->auth );
 	if( conn->firstbyte )
 	{
 		if( conn->lastbyte )
-			http_addheader( conn, "Range: bytes=%lld-%lld", conn->firstbyte, conn->lastbyte );
+			https_addheader( conn, "Range: bytes=%lld-%lld", conn->firstbyte, conn->lastbyte );
 		else if(conn->firstbyte > 1)
-			http_addheader( conn, "Range: bytes=%lld-", conn->firstbyte );
+			https_addheader( conn, "Range: bytes=%lld-", conn->firstbyte );
 	}
 }
 
-void http_addheader( http_t *conn, char *format, ... )
+void https_addheader( https_t *conn, char *format, ... )
 {
 	char s[MAX_STRING];
 	va_list params;
@@ -134,7 +154,7 @@ void http_addheader( http_t *conn, char *format, ... )
 	strncat( conn->request, s, MAX_QUERY - strlen(conn->request) - 1);
 }
 
-int http_exec( http_t *conn )
+int https_exec( https_t *conn )
 {
 	int i = 0;
 	char s[2] = " ", *s2;
@@ -143,10 +163,10 @@ int http_exec( http_t *conn )
 	fprintf( stderr, "--- Sending request ---\n%s--- End of request ---\n", conn->request );
 #endif
 
-	http_addheader( conn, "" );
-	if(write( conn->fd, conn->request, strlen( conn->request ) ) < 0)
-    {
-        sprintf( conn->headers, _("Unknown Error\n") );
+	https_addheader( conn, "" );
+	// write( conn->fd, conn->request, strlen( conn->request ) );
+    if( SSL_write( conn->ssl, conn->request, strlen( conn->request ) ) < 0 ) {
+        fprintf( stderr, "SSL_write Error\n");
         return( 0 );
     }
 	
@@ -155,7 +175,7 @@ int http_exec( http_t *conn )
 	   actual data							*/
 	while( 1 )
 	{
-		if( read( conn->fd, s, 1 ) <= 0 )
+		if( SSL_read( conn->ssl, s, 1 ) <= 0 )
 		{
 			/* We'll put the message in conn->headers, not in request */
             puts(s);
@@ -191,11 +211,10 @@ int http_exec( http_t *conn )
 	return( 1 );
 }
 
-char *http_header( http_t *conn, char *header )
+char *https_header( https_t *conn, char *header )
 {
 	char s[32];
 	int i;
-	
 	for( i = 1; conn->headers[i]; i ++ )
 		if( conn->headers[i-1] == '\n' )
 		{
@@ -207,12 +226,12 @@ char *http_header( http_t *conn, char *header )
 	return( NULL );
 }
 
-long long int http_size( http_t *conn )
+long long int https_size( https_t *conn )
 {
 	char *i;
 	long long int j;
 	
-	if( ( i = http_header( conn, "Content-Length:" ) ) == NULL )
+	if( ( i = https_header( conn, "Content-Length:" ) ) == NULL )
 		return( -2 );
 	
 	sscanf( i, "%lld", &j );
@@ -220,7 +239,7 @@ long long int http_size( http_t *conn )
 }
 
 /* Decode%20a%20file%20name						*/
-void http_decode( char *s )
+void https_decode( char *s )
 {
 	char t[MAX_STRING];
 	int i, j, k;
@@ -240,7 +259,7 @@ void http_decode( char *s )
 	strcpy( s, t );
 }
 
-void http_encode( char *s )
+void https_encode( char *s )
 {
 	char t[MAX_STRING];
 	int i, j;
