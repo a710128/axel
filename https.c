@@ -28,6 +28,15 @@
 
 int https_connect( https_t *conn, int proto, char *proxy, char *host, int port, char *user, char *pass )
 {
+    static int FirstCall = 0;
+    if(FirstCall == 0) {
+        SSL_library_init();
+        OpenSSL_add_all_algorithms();  
+        SSL_load_error_strings();  
+        FirstCall = 1;
+    }
+    
+    
 	char base64_encode[64] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 		"abcdefghijklmnopqrstuvwxyz0123456789+/";
 	char auth[MAX_STRING];
@@ -43,6 +52,7 @@ int https_connect( https_t *conn, int proto, char *proxy, char *host, int port, 
 		if( !conn_set( tconn, proxy ) )
 		{
 			/* We'll put the message in conn->headers, not in request */
+            
 			sprintf( conn->headers, _("Invalid proxy string: %s\n"), proxy );
 			return( 0 );
 		}
@@ -54,14 +64,13 @@ int https_connect( https_t *conn, int proto, char *proxy, char *host, int port, 
 	{
 		conn->proxy = 0;
 	} }
-	
 	if( ( conn->fd = tcp_connect( host, port, conn->local_if ) ) == -1 )
 	{
 		/* We'll put the message in conn->headers, not in request */
 		sprintf( conn->headers, _("Unable to connect to server %s:%i\n"), host, port );
 		return( 0 );
 	}
-	
+	//printf("##############!!\n");
 	if( *user == 0 )
 	{
 		*conn->auth = 0;
@@ -81,9 +90,6 @@ int https_connect( https_t *conn, int proto, char *proxy, char *host, int port, 
 		}
 	}
     
-    SSL_library_init();  
-    OpenSSL_add_all_algorithms();  
-    SSL_load_error_strings();  
     conn->ctx = SSL_CTX_new(SSLv23_client_method());  
     if (conn->ctx == NULL)  
     {  
@@ -136,7 +142,7 @@ void https_get( https_t *conn, char *lurl )
 	{
 		if( conn->lastbyte )
 			https_addheader( conn, "Range: bytes=%lld-%lld", conn->firstbyte, conn->lastbyte );
-		else if(conn->firstbyte > 1)
+		else
 			https_addheader( conn, "Range: bytes=%lld-", conn->firstbyte );
 	}
 }
@@ -230,7 +236,6 @@ long long int https_size( https_t *conn )
 {
 	char *i;
 	long long int j;
-	
 	if( ( i = https_header( conn, "Content-Length:" ) ) == NULL )
 		return( -2 );
 	
