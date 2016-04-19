@@ -5,6 +5,10 @@ UNRELEASED:
 - Restore kapt meanings (Closes: #311811), thanks Daniel Gimpelevich
 - Add PO-Revision-Date header to ru.po
 
+Version 2.4A
+
+- Added support for HTTPS
+
 Version 2.4
 
 - Fix a buffer overflow caused by wrong size limits  when copying strings (Closes: #311569), thanks Michael Schwendt and the Fedora project members
